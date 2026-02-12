@@ -1,5 +1,31 @@
 Main class
+    - looping code
+    - attaches other classes together
+    - communicates to motors (may want to call a motor class or library)
 
 HMI class
+    - read inputs from knobs
+    - output to display
 
 Math class
+    - inverse kinematics
+    - motor PID functions (maybe, depends on motor libraries)
+WORST CASE, we can guess-and-check this functionality using the gyroscope sensors
+
+
+
+Math class usage example:
+
+main(){
+    // get the value I want the table to be at 
+    double xDeg = getinput(knob1);
+    double yDeg = getinput(knob2);
+
+    // a function in the math class will be able to input the degree of tilt we want the table at, 
+    // and the current positions of the motors, then output new motor position values
+    newMotorPos1, newMotorPos2 = motorMath(xDeg, yDeg, motor1.getPos(), motor2.getPos());
+
+    // main function will handle telling the motors this new value
+    motor1.set(newMotorPos1);
+    motor2.set(newMotorPos1);
+}
