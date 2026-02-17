@@ -1,20 +1,33 @@
 // main operating/running files
-#include "hmi.ino"
-#include "math.ino"
 
 // ALL digital pins support interrupts, so this is fine
 int stopButtonPIN = 22;
 int goButtonPIN = 23;
 
-void init(){
+int xDeg = 20;
+int yDeg = 24;
+int status = 1;
+// 1: ok | 2: going | 3: stopped (done) | 4: stopped (button) | 5+: error
+// see hmi.ino
+
+void setup(){
     // initialize pins, input variables, general setup
+    pinMode(stopButtonPIN, INPUT_PULLUP);
+    pinMode(goButtonPIN, INPUT_PULLUP);
+
+    // run init() function in hmi.imo
+    hminit();
 
     // setup ISR
     attachInterrupt(digitalPinToInterrupt(goButtonPIN), goButton, FALLING);
     attachInterrupt(digitalPinToInterrupt(stopButtonPIN), stopButton, FALLING);
 }
 
-void goButton(knob1, knob2, motor1Pos, motor2Pos){
+// void goButton(knob1, knob2, motor1Pos, motor2Pos){
+void goButton(){
+    status = 1; // temporarily using this function as a reset
+
+    /*
     double xDeg = getinput(knob1);
     double yDeg = getinput(knob2);
 
@@ -23,23 +36,23 @@ void goButton(knob1, knob2, motor1Pos, motor2Pos){
     if(motorsAvailable){ // check motor semaphore
         motor1.set(newMotorPos1);
         motor2.set(newMotorPos1);
-    }
+    } */
 }
+
 
 void stopButton(){
-    int motorsAvailable = 0; // set motor semaphore
-    motor1.stop();
-    motor2.stop();
-    int int motorsAvailable = 1;
+    status = 4;
+    //int motorsAvailable = 0; // set motor semaphore
+    //motor1.stop();
+    //motor2.stop();
+    //int motorsAvailable = 1;
 }
 
-int main(){
-    init();
+void loop(){
 
-    while(1){
-        //loop
-        setScreen(xDeg, yDeg, status);
-    }
-
-    return;
+    //TODO in the future, set a calibration process
+    
+    //loop
+    setScreen(xDeg, yDeg, status);
+    delay(100); // keeps the screen's "queue" from filling too fast
 }

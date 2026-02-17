@@ -1,0 +1,1 @@
+// class for math functions regarding joint placement
