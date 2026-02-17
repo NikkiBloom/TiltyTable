@@ -71,15 +71,15 @@ void StateMachineTask(void *pvParameters) {
     for (;;) {
 
         // check button changes
-        if (goPressed) {
-            lcdTimeoutTimer = millis();
-            goPressed = false;
-            systemStatus = STATE_MOVING;
-        }
         if (stopPressed) {
             lcdTimeoutTimer = millis();
             stopPressed = false;
             systemStatus = STATE_STOP;
+        }
+        else if (goPressed) {
+            lcdTimeoutTimer = millis();
+            goPressed = false;
+            systemStatus = STATE_MOVING;
         }
 
         // Actual state machine
