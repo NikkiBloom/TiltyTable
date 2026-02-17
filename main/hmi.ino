@@ -13,17 +13,27 @@ const int LCD_ROWS = 2; // Number of rows of the LCD
 // Create an instance of the LCD object
 LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLS, LCD_ROWS);
 
+// Create instance of a clock
+uint32_t lastUpdated = 0; // time screen was last updated for screen sleeping in loop()
+uint32_t currTime = 0;
+bool screenOn = true; // starts on my default
+#define TIMEOUT 30000
+// #define TIMEOUT 300000 // 5 minutes
+
 void hminit(){
     // Initialize the I2C bus
     Wire.begin();
+    delay(50); // fixes lcd startup issues; display did not update
     // Initialize the LCD
     lcd.init();
-    lcd.backlight();  
-    lcd.clear();
- 
+    lcd.backlight();
+    lcd.setCursor(0,0);
+    lcd.print("BOOTING ...");
+    // setup current time
+    currTime = millis(); 
 }
 
-void setScreen(int xDeg, int yDeg, int status){
+void setScreen(double xDeg, double yDeg, const char* statusText){
     lcd.setCursor(0, 0);
     lcd.print("X:");
     lcd.print(xDeg);
@@ -33,22 +43,30 @@ void setScreen(int xDeg, int yDeg, int status){
     lcd.print(yDeg);
 
     lcd.setCursor(0, 1);
+    lcd.print("STATUS: ");
+    lcd.print(statusText);
+    lcd.print("          ");
 
-    // 1: ok | 2: going | 3: stopped (done) | 4: stopped (button) | 5+: error
-    if(status == 1) lcd.print("STATUS: OK      ");
-    if(status == 2) lcd.print("STATUS: MOVING      ");
-    else if(status == 3) lcd.print("STATUS: DONE  ");
-    else if(status == 4) lcd.print("STATUS: STOPPED  ");
-    else lcd.print("STATUS: ERROR  ");
+    Serial.println("setScreen() updated.");
 }
 
-
-/*
-int getKnob1(){
-    return knobVal;
+// turns off the backlight if TIMEOUT time has been passed
+void lcdTimeout(uint32_t lastUpdated){
+    currTime = millis();
+    if(currTime - lastUpdated >= TIMEOUT){
+        lcd.noBacklight();
+        screenOn = false;
+    }
+    else{
+        lcd.backlight();
+        screenOn = true;
+    }
 }
 
-int getKnob2(){
-    return knobVal;
+int getXDial(){
+    return 20;
 }
-*/
+
+int getYDial(){
+    return 30;
+}
