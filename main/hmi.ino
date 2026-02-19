@@ -20,7 +20,7 @@ bool screenOn = true; // starts on my default
 #define TIMEOUT 30000
 // #define TIMEOUT 300000 // 5 minutes
 
-void hminit(){
+int hminit(){
     // Initialize the I2C bus
     Wire.begin();
     delay(50); // fixes lcd startup issues; display did not update
@@ -31,6 +31,8 @@ void hminit(){
     lcd.print("BOOTING ...");
     // setup current time
     currTime = millis(); 
+    lcd.clear();
+    return 1;
 }
 
 void setScreen(double xDeg, double yDeg, const char* statusText){

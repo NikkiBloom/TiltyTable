@@ -1,10 +1,13 @@
 #include <Arduino.h>
-#include <FreeRTOS_ARM.h>
+#include <FreeRTOS_ARM.h> // https://github.com/greiman/FreeRTOS-Arduino/tree/master
+#include <SPI.h>
+#include <SCL3300.h>
 
 // macros - basically a varible definition handles when the code compiles, and will never update.
 // all caps is code convention
 #define STOPPIN 22
 #define GOPIN 23
+#define RESETPIN 31
 
 // Task Handles
 TaskHandle_t errorTaskHandle;
@@ -23,6 +26,12 @@ uint32_t lcdTimeoutTimer = 0; // only ever set to 0; data sharing not a concern
 // Button flags
 volatile bool goPressed = false;
 volatile bool stopPressed = false;
+volatile bool resetPressed = false;
+// wake button
+
+// Inclinometer
+SCL3300 inclinometer;
+// Default SPI chip/slave select pin is D10
 
 // System state enum to track states/status/what its doing. 
 enum SystemState {
@@ -30,7 +39,8 @@ enum SystemState {
     STATE_MOVING,
     STATE_DONE,
     STATE_STOP,
-    STATE_ERROR
+    STATE_ERROR,
+    STATE_RESET
 };
 volatile SystemState systemStatus = STATE_OK;
 
@@ -41,6 +51,7 @@ const char* stateToString(SystemState s) { // for passing to hmi.ino
         case STATE_DONE:    return "DONE";
         case STATE_STOP:    return "STOPPING";
         case STATE_ERROR:   return "ERROR";
+        case STATE_RESET:   return "RESETTING";
         default:            return "UNKNOWN";
     }
 }
@@ -53,7 +64,13 @@ const char* stateToString(SystemState s) { // for passing to hmi.ino
 // Safety
 void ErrorTask(void *pvParameters) {
     for (;;) {
-        // deal with motor faults and other errors
+
+        /*
+        if (inclinometer.begin() == false) {
+            Serial.println("Murata SCL3300 inclinometer not connected.");
+            while(1); //Freeze
+        }*/
+       
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
@@ -69,12 +86,16 @@ void MotorTask(void *pvParameters) {
 // State Machine
 void StateMachineTask(void *pvParameters) {
     for (;;) {
-
         // check button changes
         if (stopPressed) {
             lcdTimeoutTimer = millis();
             stopPressed = false;
             systemStatus = STATE_STOP;
+        }
+        else if (resetPressed) {
+            lcdTimeoutTimer = millis();
+            resetPressed = false;
+            systemStatus = STATE_RESET;
         }
         else if (goPressed) {
             lcdTimeoutTimer = millis();
@@ -118,6 +139,16 @@ void StateMachineTask(void *pvParameters) {
                 // ErrorTask should set this state
                 // Stay here until reset
                 break;
+            
+            case STATE_RESET:
+                vTaskSuspend(displayTaskHandle);
+                while(hminit() != 1){
+                    // nothing until it says "I'm ready"
+                }
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                vTaskResume(displayTaskHandle);
+                break;
+
         }
         vTaskDelay(pdMS_TO_TICKS(20));
     }
@@ -127,13 +158,16 @@ void StateMachineTask(void *pvParameters) {
 void ButtonTask(void *pvParameters) {
     pinMode(STOPPIN, INPUT_PULLUP); 
     pinMode(GOPIN, INPUT_PULLUP);
+    pinMode(RESETPIN, INPUT_PULLUP);
 
     bool lastGo = HIGH;
     bool lastStop = HIGH;
+    bool lastReset = HIGH;
 
     for (;;) {
         bool goState = digitalRead(GOPIN);
         bool stopState = digitalRead(STOPPIN);
+        bool resetState = digitalRead(RESETPIN);
 
         if (lastGo == HIGH && goState == LOW) {
             goPressed = true;
@@ -143,8 +177,13 @@ void ButtonTask(void *pvParameters) {
             stopPressed = true;
         }
 
+        if (lastReset == HIGH && resetState == LOW) {
+            resetPressed = true;
+        }
+
         lastGo = goState;
         lastStop = stopState;
+        lastReset = resetState;
 
         vTaskDelay(pdMS_TO_TICKS(10)); // debounce
     }
