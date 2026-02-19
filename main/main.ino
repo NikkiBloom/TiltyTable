@@ -21,7 +21,12 @@ TaskHandle_t displayTaskHandle;
 // Target angles from dials
 volatile double targetX = 0;
 volatile double targetY = 0;
+
 uint32_t lcdTimeoutTimer = 0; // only ever set to 0; data sharing not a concern
+
+volatile bool motorsStopped = true; // assume breaks at startup?
+volatile double motorX = 0;
+volatile double motorY = 0;
 
 // Button flags
 volatile bool goPressed = false;
@@ -65,6 +70,18 @@ const char* stateToString(SystemState s) { // for passing to hmi.ino
 void ErrorTask(void *pvParameters) {
     for (;;) {
 
+        // Reset LCD. Also works as a "wake" function.
+        if (resetPressed){
+            resetPressed = false;
+            // suspend updates during reset
+            vTaskSuspend(displayTaskHandle);
+            while(hminit() != 1) {
+                // nothing until it says "I'm ready"
+            }
+            // time to gap startup
+            //vTaskDelay(pdMS_TO_TICKS(500));
+            vTaskResume(displayTaskHandle);
+        }
         /*
         if (inclinometer.begin() == false) {
             Serial.println("Murata SCL3300 inclinometer not connected.");
@@ -78,8 +95,17 @@ void ErrorTask(void *pvParameters) {
 // Motor Control
 void MotorTask(void *pvParameters) {
     for (;;) {
+        if(systemStatus == STATE_STOP){
+            // stop motors
+            motorsStopped = true;
+        }
+        else if(systemStatus == STATE_MOVING){
+            motorsStopped = false;
+            // move motors
+            motorsStopped = true;
+        }
         // move motors toward targetX/targetY
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 
@@ -91,11 +117,6 @@ void StateMachineTask(void *pvParameters) {
             lcdTimeoutTimer = millis();
             stopPressed = false;
             systemStatus = STATE_STOP;
-        }
-        else if (resetPressed) {
-            lcdTimeoutTimer = millis();
-            resetPressed = false;
-            systemStatus = STATE_RESET;
         }
         else if (goPressed) {
             lcdTimeoutTimer = millis();
@@ -112,17 +133,13 @@ void StateMachineTask(void *pvParameters) {
 
             case STATE_MOVING:
                 // Check if motors reached target
-                // if (motorsAtTarget()) {
-                //     systemStatus = STATE_DONE;
-                // }
-                // for debug:
-                vTaskDelay(pdMS_TO_TICKS(5000)); // wait 5 seconds to simulate motor movement
-                systemStatus = STATE_DONE;
+                if(motorsStopped){
+                    systemStatus = STATE_DONE;
+                }
                 break;
 
             case STATE_DONE:
-                // Completed movement, waiting for next GO
-                vTaskDelay(pdMS_TO_TICKS(1000)); // simulate any tasks we may put here. May remain empty!
+                // Completed movement
                 systemStatus = STATE_OK;
                 break;
 
@@ -130,31 +147,28 @@ void StateMachineTask(void *pvParameters) {
                 // Freeze all motor movement
                 // Wait until user presses GO again
                 // for debug:
-                vTaskDelay(pdMS_TO_TICKS(2000)); // wait 2 seconds to simulate motor movement
-                systemStatus = STATE_DONE;
+                if(motorsStopped){
+                    systemStatus = STATE_RESET;
+                }
 
+                break;
+
+            case STATE_RESET:
+                // runs after STOP to reset any moving variables
+                systemStatus = STATE_OK;
                 break;
 
             case STATE_ERROR:
                 // ErrorTask should set this state
                 // Stay here until reset
                 break;
-            
-            case STATE_RESET:
-                vTaskSuspend(displayTaskHandle);
-                while(hminit() != 1){
-                    // nothing until it says "I'm ready"
-                }
-                vTaskDelay(pdMS_TO_TICKS(1000));
-                vTaskResume(displayTaskHandle);
-                break;
-
         }
+
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 
-// Buttons
+// Detects and flags button presses
 void ButtonTask(void *pvParameters) {
     pinMode(STOPPIN, INPUT_PULLUP); 
     pinMode(GOPIN, INPUT_PULLUP);
