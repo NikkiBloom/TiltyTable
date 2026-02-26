@@ -2,12 +2,17 @@
 #include <FreeRTOS_ARM.h> // https://github.com/greiman/FreeRTOS-Arduino/tree/master
 #include <SPI.h>
 #include <SCL3300.h>
+#include <due_can.h>
+#include "motors.h"
 
 // macros - basically a varible definition handles when the code compiles, and will never update.
 // all caps is code convention
 #define STOPPIN 22
 #define GOPIN 23
 #define RESETPIN 31
+#define BUS_SPEED CAN_BPS_500K
+
+#define TESTING 1
 
 // Task Handles
 TaskHandle_t errorTaskHandle;
@@ -32,6 +37,8 @@ volatile bool resetPressed = false;
 // Inclinometer
 SCL3300 inclinometer;
 // Default SPI chip/slave select pin is D10
+
+// Motor
 
 // System state enum to track states/status/what its doing. 
 enum SystemState {
@@ -220,16 +227,37 @@ void setup() {
     Serial.begin(115200);
     lcdTimeoutTimer = millis();
 
-    // Create tasks
-    xTaskCreate(ErrorTask, "Errors", 256, NULL, 3, &errorTaskHandle);
-    xTaskCreate(MotorTask, "Motors", 256, NULL, 2, &motorTaskHandle);
-    xTaskCreate(StateMachineTask, "State", 256, NULL, 2, &stateMachineTaskHandle);
-    xTaskCreate(ButtonTask, "Buttons", 256, NULL, 1, &buttonTaskHandle);
-    xTaskCreate(DialTask, "Dials", 256, NULL, 1, &dialTaskHandle);
-    xTaskCreate(DisplayTask, "Display", 256, NULL, 1, &displayTaskHandle);
+    motorinit();
 
-    // Start scheduler
-    vTaskStartScheduler();
+    if(TESTING) {
+        Serial.print("Debug Mode Enabled. Limited Functionality Limited. \n");
+    }
+
+    else {
+        // Create tasks
+        xTaskCreate(ErrorTask, "Errors", 256, NULL, 3, &errorTaskHandle);
+        xTaskCreate(MotorTask, "Motors", 256, NULL, 2, &motorTaskHandle);
+        xTaskCreate(StateMachineTask, "State", 256, NULL, 2, &stateMachineTaskHandle);
+        xTaskCreate(ButtonTask, "Buttons", 256, NULL, 1, &buttonTaskHandle);
+        xTaskCreate(DialTask, "Dials", 256, NULL, 1, &dialTaskHandle);
+        xTaskCreate(DisplayTask, "Display", 256, NULL, 1, &displayTaskHandle);
+
+        // Start scheduler
+        vTaskStartScheduler();
+    }
 }
 
-void loop() {} // FreeRTOS takes over; loop() is unused
+void loop() {
+    if(TESTING){
+        // Print any CAN frame we see
+        CAN_FRAME rx;
+        if (Can0.available()) {
+        Can0.read(rx);
+        Serial.print("[RAW RX] ID=0x"); Serial.print(rx.id, HEX);
+        Serial.print(" DLC=");         Serial.print(rx.length);
+        Serial.print(" DATA:");
+        for (int i=0; i<rx.length; ++i) { Serial.print(' '); Serial.print(rx.data.bytes[i], HEX); }
+        Serial.println();
+        }
+    }
+} 
