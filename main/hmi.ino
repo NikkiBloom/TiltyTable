@@ -17,7 +17,7 @@ LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLS, LCD_ROWS);
 uint32_t lastUpdated = 0; // time screen was last updated for screen sleeping in loop()
 uint32_t currTime = 0;
 bool screenOn = true; // starts on my default
-#define TIMEOUT 30000
+#define TIMEOUT 300000
 // #define TIMEOUT 300000 // 5 minutes
 
 int hminit(){
