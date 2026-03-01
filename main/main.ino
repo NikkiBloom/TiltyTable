@@ -109,7 +109,12 @@ void MotorTask(void *pvParameters) {
         else if(systemStatus == STATE_MOVING){
             motorsStopped = false;
             // move motors
-            motorsStopped = true;
+            if((int)inclinometer.getCalculatedAngleX() == targetX && 
+            (int)inclinometer.getCalculatedAngleY() == targetY) {
+                //done!!
+                //stop motors
+                motorsStopped = true;
+            }
         }
         // move motors toward targetX/targetY
         vTaskDelay(pdMS_TO_TICKS(5));
@@ -220,13 +225,39 @@ void DialTask(void *pvParameters) {
     }
 }
 
+void InclinometerTask(void *pvParameters) {
+    for(;;){
+        if (inclinometer.available()) {
+            if(TESTING){
+                // Print the calculated X and Y tilt angles in degrees [3]
+                Serial.print("X Angle: ");
+                Serial.print(inclinometer.getCalculatedAngleX());
+                Serial.print("° | Y Angle: ");
+                Serial.print(inclinometer.getCalculatedAngleY());
+                Serial.println("°");
+            }
+        } else {
+            // If data is not available, the library requires a reset [2]
+            inclinometer.reset();
+            Serial.println("Sensor error detected. Resetting...");
+        }
+    }
+}
+
 // Display
 void DisplayTask(void *pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(500));
     hminit();
 
+    Serial.println("Display task alive");
+
     for (;;) {
-        Serial.println("Display task alive");
+        if(TESTING){
+            //Serial.print("State: %s\n", stateToString(systemStatus));
+            //Serial.print("Inclinometer x: %d\n", inclinometer.getCalculatedAngleX());
+            //Serial.print("Inclinometer y: %d\n", inclinometer.getCalculatedAngleY());
+        }
+        Serial.print("\n");
         setScreen(targetX, targetY, stateToString(systemStatus));
         lcdTimeout(lcdTimeoutTimer);
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -241,7 +272,14 @@ void setup() {
     Serial.begin(115200);
     lcdTimeoutTimer = millis();
 
-    motorinit();
+    //motorinit();
+
+    if (inclinometer.begin()) {
+        Serial.println("SCL3300 sensor initialized successfully.\n");
+    } 
+    else {
+        Serial.println("Failed to connect to SCL3300. Check your wiring.\n");
+    }
 
     if(TESTING) {
         Serial.print("Debug Mode Enabled. Limited Functionality Limited. \n");
@@ -249,12 +287,13 @@ void setup() {
 
     else {
         // Create tasks
-        xTaskCreate(ErrorTask, "Errors", 256, NULL, 3, &errorTaskHandle);
-        xTaskCreate(MotorTask, "Motors", 256, NULL, 2, &motorTaskHandle);
+        xTaskCreate(InclinometerTask, "Inclinometer Watch", 256, NULL, 7, &errorTaskHandle);
+        xTaskCreate(ErrorTask, "Errors", 256, NULL, 1, &errorTaskHandle);
+        xTaskCreate(MotorTask, "Motors", 256, NULL, 3, &motorTaskHandle);
         xTaskCreate(StateMachineTask, "State", 256, NULL, 2, &stateMachineTaskHandle);
-        xTaskCreate(ButtonTask, "Buttons", 256, NULL, 1, &buttonTaskHandle);
-        xTaskCreate(DialTask, "Dials", 256, NULL, 1, &dialTaskHandle);
-        xTaskCreate(DisplayTask, "Display", 256, NULL, 1, &displayTaskHandle);
+        xTaskCreate(ButtonTask, "Buttons", 256, NULL, 4, &buttonTaskHandle);
+        xTaskCreate(DialTask, "Dials", 256, NULL, 5, &dialTaskHandle);
+        xTaskCreate(DisplayTask, "Display", 256, NULL, 6, &displayTaskHandle);
 
         // Start scheduler
         vTaskStartScheduler();
@@ -266,12 +305,25 @@ void loop() {
         // Print any CAN frame we see
         CAN_FRAME rx;
         if (Can0.available()) {
-        Can0.read(rx);
-        Serial.print("[RAW RX] ID=0x"); Serial.print(rx.id, HEX);
-        Serial.print(" DLC=");         Serial.print(rx.length);
-        Serial.print(" DATA:");
-        for (int i=0; i<rx.length; ++i) { Serial.print(' '); Serial.print(rx.data.bytes[i], HEX); }
-        Serial.println();
+            Can0.read(rx);
+            Serial.print("[RAW RX] ID=0x"); Serial.print(rx.id, HEX);
+            Serial.print(" DLC=");         Serial.print(rx.length);
+            Serial.print(" DATA:");
+            for (int i=0; i<rx.length; ++i) { Serial.print(' '); Serial.print(rx.data.bytes[i], HEX); }
+            Serial.println();
+        }
+
+        if (inclinometer.available()) {
+            // Print the calculated X and Y tilt angles in degrees [3]
+            Serial.print("X Angle: ");
+            Serial.print(inclinometer.getCalculatedAngleX());
+            Serial.print("° | Y Angle: ");
+            Serial.print(inclinometer.getCalculatedAngleY());
+            Serial.println("°");
+        } else {
+            // If data is not available, the library requires a reset [2]
+            inclinometer.reset();
+            Serial.println("Sensor error detected. Resetting...");
         }
     }
 } 
