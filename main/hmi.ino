@@ -35,6 +35,9 @@ int hminit(){
     return 1;
 }
 
+// TODO FOR FAYE
+// This is for our 2-line display
+// update with more info to fill 4 lines
 void setScreen(double xDeg, double yDeg, const char* statusText){
     lcd.setCursor(0, 0);
     lcd.print("X:");
