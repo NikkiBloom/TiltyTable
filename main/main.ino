@@ -251,6 +251,9 @@ void DisplayTask(void *pvParameters) {
 
     Serial.println("Display task alive");
 
+    double inclinometerX = inclinometer.getCalculatedAngleX();
+    double inclinometerY = inclinometer.getCalculatedAngleY();
+
     for (;;) {
         if(TESTING){
             //Serial.print("State: %s\n", stateToString(systemStatus));
@@ -258,7 +261,11 @@ void DisplayTask(void *pvParameters) {
             //Serial.print("Inclinometer y: %d\n", inclinometer.getCalculatedAngleY());
         }
         Serial.print("\n");
-        setScreen(targetX, targetY, stateToString(systemStatus));
+
+        inclinometerX = inclinometer.getCalculatedAngleX();
+        inclinometerY = inclinometer.getCalculatedAngleY();
+        setScreen(targetX, targetY, inclinometerX, inclinometerY, const char* statusText);
+        
         lcdTimeout(lcdTimeoutTimer);
         vTaskDelay(pdMS_TO_TICKS(500));
     }
