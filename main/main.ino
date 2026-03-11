@@ -27,7 +27,11 @@ TaskHandle_t displayTaskHandle;
 volatile double targetX = 0;
 volatile double targetY = 0;
 
-uint32_t lcdTimeoutTimer = 0; // only ever set to 0; data sharing not a concern
+// inclinometer values
+volatile double inclinometerX = 0;
+volatile double inclinometerY = 0;
+
+uint32_t lastInputTime = 0; 
 
 volatile bool motorsStopped = true; // assume breaks at startup?
 volatile double motorX = 0;
@@ -54,6 +58,7 @@ enum SystemState {
     STATE_ERROR,
     STATE_RESET
 };
+
 volatile SystemState systemStatus = STATE_OK;
 
 const char* stateToString(SystemState s) { // for passing to hmi.ino
@@ -126,12 +131,10 @@ void StateMachineTask(void *pvParameters) {
     for (;;) {
         // check button changes
         if (stopPressed) {
-            lcdTimeoutTimer = millis();
             stopPressed = false;
             systemStatus = STATE_STOP;
         }
         else if (goPressed) {
-            lcdTimeoutTimer = millis();
             goPressed = false;
             systemStatus = STATE_MOVING;
         }
@@ -197,21 +200,24 @@ void ButtonTask(void *pvParameters) {
 
         if (lastGo == HIGH && goState == LOW) {
             goPressed = true;
+            lastInputTime = millis();
         }
 
         if (lastStop == HIGH && stopState == LOW) {
             stopPressed = true;
+            lastInputTime = millis();
         }
 
-        if (lastReset == HIGH && resetState == LOW) {
+        if (lastReset == HIGH && resetState == LOW) { // currently unused elsewhere in code
             resetPressed = true;
+            lastInputTime = millis();
         }
 
         lastGo = goState;
         lastStop = stopState;
         lastReset = resetState;
 
-        vTaskDelay(pdMS_TO_TICKS(10)); // debounce
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
@@ -227,19 +233,16 @@ void DialTask(void *pvParameters) {
 
 void InclinometerTask(void *pvParameters) {
     for(;;){
-        if (inclinometer.available()) {
-            if(TESTING){
-                // Print the calculated X and Y tilt angles in degrees [3]
-                Serial.print("X Angle: ");
-                Serial.print(inclinometer.getCalculatedAngleX());
-                Serial.print("° | Y Angle: ");
-                Serial.print(inclinometer.getCalculatedAngleY());
-                Serial.println("°");
-            }
-        } else {
-            // If data is not available, the library requires a reset [2]
-            inclinometer.reset();
-            Serial.println("Sensor error detected. Resetting...");
+        inclinometerX = inclinometer.getCalculatedAngleX();
+        inclinometerY = inclinometer.getCalculatedAngleY();
+        
+        if(TESTING){
+            // Print the calculated X and Y tilt angles in degrees [3]
+            Serial.print("X Angle: ");
+            Serial.print(inclinometer.getCalculatedAngleX());
+            Serial.print("° | Y Angle: ");
+            Serial.print(inclinometer.getCalculatedAngleY());
+            Serial.println("°");
         }
     }
 }
@@ -249,10 +252,7 @@ void DisplayTask(void *pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(500));
     hminit();
 
-    Serial.println("Display task alive");
-
-    double inclinometerX = inclinometer.getCalculatedAngleX();
-    double inclinometerY = inclinometer.getCalculatedAngleY();
+    Serial.println("Display task alive!\n");
 
     for (;;) {
         if(TESTING){
@@ -264,9 +264,10 @@ void DisplayTask(void *pvParameters) {
 
         inclinometerX = inclinometer.getCalculatedAngleX();
         inclinometerY = inclinometer.getCalculatedAngleY();
-        setScreen(targetX, targetY, inclinometerX, inclinometerY, const char* statusText);
+        setScreen(targetX, targetY, inclinometerX, inclinometerY, statusText);
+
+        lcdTimeout(lastInputTime);
         
-        lcdTimeout(lcdTimeoutTimer);
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
@@ -277,7 +278,7 @@ void DisplayTask(void *pvParameters) {
 
 void setup() {
     Serial.begin(115200);
-    lcdTimeoutTimer = millis();
+    lastInputTime = millis();
 
     //motorinit();
 
@@ -308,29 +309,5 @@ void setup() {
 }
 
 void loop() {
-    if(TESTING){
-        // Print any CAN frame we see
-        CAN_FRAME rx;
-        if (Can0.available()) {
-            Can0.read(rx);
-            Serial.print("[RAW RX] ID=0x"); Serial.print(rx.id, HEX);
-            Serial.print(" DLC=");         Serial.print(rx.length);
-            Serial.print(" DATA:");
-            for (int i=0; i<rx.length; ++i) { Serial.print(' '); Serial.print(rx.data.bytes[i], HEX); }
-            Serial.println();
-        }
-
-        if (inclinometer.available()) {
-            // Print the calculated X and Y tilt angles in degrees [3]
-            Serial.print("X Angle: ");
-            Serial.print(inclinometer.getCalculatedAngleX());
-            Serial.print("° | Y Angle: ");
-            Serial.print(inclinometer.getCalculatedAngleY());
-            Serial.println("°");
-        } else {
-            // If data is not available, the library requires a reset [2]
-            inclinometer.reset();
-            Serial.println("Sensor error detected. Resetting...");
-        }
-    }
+    // freeRTOS takes over
 } 

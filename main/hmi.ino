@@ -15,11 +15,13 @@ const int LCD_ROWS = 4; // Number of rows of the LCD
 LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLS, LCD_ROWS);
 
 // Dial setup variables
-#DEFINE DIAL1PINA 52 
-#DEFINE DIAL1PINB 53 
+#define DIAL1PINA 52
+#define DIAL1PINB 53
+#define DIAL2PINA 50
+#define DIAL2PINB 51
 
-#DEFINE DIAL2PINA 50 
-#DEFINE DIAL2PINB 51 
+RotaryEncoder *xEncoder = nullptr;
+RotaryEncoder *yEncoder = nullptr;
 
 // Create instance of a clock
 uint32_t lastUpdated = 0; // time screen was last updated for screen sleeping in loop()
@@ -37,19 +39,22 @@ int hminit(){
     lcd.backlight();
     lcd.setCursor(0,0);
     lcd.print("BOOTING ...");
-    // setup current time
+    // setup current time (used for LCD sleep mode)
     currTime = millis(); 
     lcd.clear();
     return 1;
 
-    encoder = new RotaryEncoder(DIAL1PIN1, DIAL2PIN2, RotaryEncoder::LatchMode::TWO03);
-    attachInterrupt(digitalPinToInterrupt(DIAL1PIN1), checkPosition, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(DIAL1PIN2), checkPosition, CHANGE);
+    // Initialize dials
+    xEncoder = new RotaryEncoder(DIAL1PINA, DIAL1PINB, RotaryEncoder::LatchMode::FOUR0);
+    attachInterrupt(digitalPinToInterrupt(DIAL1PINA), checkPosition, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(DIAL1PINB), checkPosition, CHANGE);
+
+    yEncoder = new RotaryEncoder(DIAL2PINA, DIAL2PINB, RotaryEncoder::LatchMode::FOUR0);
+    attachInterrupt(digitalPinToInterrupt(DIAL2PINA), checkPosition, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(DIAL2PINB), checkPosition, CHANGE);
 }
 
-// TODO FOR FAYE
-// This is for our 2-line display
-// update with more info to fill 4 lines
+// written by Faye! Updates the display with variables passed from main.ino. Called in a loop in main.ino.
 void setScreen(double XTAR, double YTAR, double XACT, double YACT, const char* statusText){
     lcd.setCursor(0, 0);
     lcd.print("TARGET");
@@ -94,9 +99,9 @@ void lcdTimeout(uint32_t lastUpdated){
 }
 
 int getXDial(){
-    return 20;
+    return xEncoder->getPosition();
 }
 
 int getYDial(){
-    return 30;
+    return yEncoder->getPosition();
 }
