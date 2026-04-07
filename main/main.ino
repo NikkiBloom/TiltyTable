@@ -10,7 +10,7 @@
 #define GOPIN 23
 #define RESETPIN 31
 
-#define TESTING 0
+#define TESTING 1
 
 // Task Handles
 TaskHandle_t errorTaskHandle;
@@ -108,22 +108,48 @@ void ErrorTask(void *pvParameters) {
 
 // Motor Control
 void MotorTask(void *pvParameters) {
+    const double TOL = 0.5;  // degrees tolerance
     for (;;) {
-        if(systemStatus == STATE_STOP){
-            // stop motors
-            vTaskDelay(pdMS_TO_TICKS(1000)); // simulate to test LCD functionality
-            motorsStopped = true;
+        switch (systemStatus) {
+            case STATE_MOVING:
+                // Motors are actively moving
+                motorsStopped = false;
+
+                // TODO: motor control code here
+                // moveMotorToward(targetX, targetY);
+
+                // Check if target reached
+                if (fabs(inclinometerX - targetX) < TOL &&
+                    fabs(inclinometerY - targetY) < TOL) {
+                    motorTargetReached = true;
+                    motorsStopped = true;
+                }
+                if(TESTING){
+                    // simulate movement for LCD test
+                    vTaskDelay(pdMS_TO_TICKS(2000));
+                    motorsStopped = true;
+                    motorTargetReached = true;
+                    break;
+                }
+                break;
+
+            case STATE_STOP:
+                // hault motor movement
+                if(TESTING){
+                    // simulate movement for LCD test
+                    vTaskDelay(pdMS_TO_TICKS(2000));
+                    motorsStopped = true;
+                    motorTargetReached = true;
+                    break;
+                }
+            case STATE_OK:
+            case STATE_DONE:
+                // Motors should not move
+                motorsStopped = true;
+                break;
+            default:
+                break;
         }
-        else if(systemStatus == STATE_MOVING){
-            motorsStopped = false;
-            // move motors
-            if((int)inclinometerX == targetX && 
-            (int)inclinometerY == targetY) {
-                //done!!
-                motorTargetReached = true;
-            }
-        }
-        // move motors toward targetX/targetY
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
@@ -131,62 +157,66 @@ void MotorTask(void *pvParameters) {
 // State Machine
 void StateMachineTask(void *pvParameters) {
     for (;;) {
-        // check button changes
+
+        /* --- Button handling --- */
+
+        if (resetPressed) {
+            resetPressed = false;
+            systemStatus = STATE_RESET;
+        }
+
         if (stopPressed) {
-            lcdTimeoutTimer = millis();
             stopPressed = false;
             systemStatus = STATE_STOP;
         }
-        else if (goPressed) {
-            lcdTimeoutTimer = millis();
+
+        if (goPressed) {
             goPressed = false;
+
+            // Prepare for motion
+            motorTargetReached = false;
+            motorsStopped = false;
+
             systemStatus = STATE_MOVING;
         }
 
-        // Actual state machine
         switch (systemStatus) {
 
             case STATE_OK:
-                // Idle, waiting for GO
+                // Idle
                 break;
 
             case STATE_MOVING:
-                // Check if motors reached target
-                motorTargetReached = false;
-                if(motorTargetReached){
-                    systemStatus = STATE_STOP;
+                if (motorTargetReached) {
+                    systemStatus = STATE_DONE;
                 }
                 break;
 
             case STATE_DONE:
-                // Completed movement
-                systemStatus = STATE_OK;
+                // Stay DONE until user action
                 break;
 
             case STATE_STOP:
-                // Freeze all motor movement
-                // Wait until user presses GO again
-                // for debug:
                 if(motorsStopped){
-                    systemStatus = STATE_DONE;
+                    systemStatus = STATE_OK;
                 }
-
                 break;
 
             case STATE_RESET:
-                // runs after STOP to reset any moving variables
+                // Reset system variables here
+                motorTargetReached = false;
+                motorsStopped = true;
                 systemStatus = STATE_OK;
                 break;
 
             case STATE_ERROR:
-                // ErrorTask should set this state
-                // Stay here until reset
+                // Wait for reset
                 break;
         }
-
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
+
 
 // Detects and flags button presses
 void ButtonTask(void *pvParameters) {
@@ -286,11 +316,11 @@ void InclinometerTask(void *pvParameters) {
             oldX = roundedX;
             oldY = roundedY;
             // Print the calculated X and Y tilt angles in degrees [3]
-            Serial.print("X Angle: ");
-            Serial.print(inclinometer.getCalculatedAngleX());
-            Serial.print("° | Y Angle: ");
-            Serial.print(inclinometer.getCalculatedAngleY());
-            Serial.println("°");
+            // Serial.print("X Angle: ");
+            // Serial.print(inclinometer.getCalculatedAngleX());
+            // Serial.print("° | Y Angle: ");
+            // Serial.print(inclinometer.getCalculatedAngleY());
+            // Serial.println("°");
         }
         if(!inclinometer.available()){
             inclinometer.reset();
