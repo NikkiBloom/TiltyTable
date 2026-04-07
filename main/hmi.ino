@@ -3,25 +3,18 @@
 
 
 #include <Wire.h> // shows unresolved in VS code; this is fine
-#include <Adafruit_GFX.h> // for IDE install : Adafruit GFX
-#include <LiquidCrystal_I2C.h> // for IDE install : LiquidCrystal I2C by Frank de Brabander
-#include <RotaryEncoder.h> // for IDE install : rotaryEncoder by Matthias Hertel
+#include <Adafruit_GFX.h> //for IDE install : Adafruit GFX
+#include <LiquidCrystal_I2C.h> //for IDE install : LiquidCrystal I2C by Frank de Brabander
 
 // Set the address, number of columns, and number of rows of the LCD
 const int LCD_ADDRESS = 0x27; // I2C address of the LCD
-const int LCD_COLS = 20; // Number of columns of the LCD
+const int LCD_COLS = 16; // Number of columns of the LCD
 const int LCD_ROWS = 4; // Number of rows of the LCD
 // Create an instance of the LCD object
 LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLS, LCD_ROWS);
 
-// Dial setup variables
-#define DIAL1PINA 52
-#define DIAL1PINB 53
-#define DIAL2PINA 50
-#define DIAL2PINB 51
-
-RotaryEncoder *xEncoder = nullptr;
-RotaryEncoder *yEncoder = nullptr;
+// early define so it can be accessed early
+void checkPosition();
 
 // Create instance of a clock
 uint32_t lastUpdated = 0; // time screen was last updated for screen sleeping in loop()
@@ -39,23 +32,14 @@ int hminit(){
     lcd.backlight();
     lcd.setCursor(0,0);
     lcd.print("BOOTING ...");
-    // setup current time (used for LCD sleep mode)
+    // setup current time
     currTime = millis(); 
     lcd.clear();
     return 1;
-
-    // Initialize dials
-    xEncoder = new RotaryEncoder(DIAL1PINA, DIAL1PINB, RotaryEncoder::LatchMode::FOUR0);
-    attachInterrupt(digitalPinToInterrupt(DIAL1PINA), checkPosition, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(DIAL1PINB), checkPosition, CHANGE);
-
-    yEncoder = new RotaryEncoder(DIAL2PINA, DIAL2PINB, RotaryEncoder::LatchMode::FOUR0);
-    attachInterrupt(digitalPinToInterrupt(DIAL2PINA), checkPosition, CHANGE);
-    attachInterrupt(digitalPinToInterrupt(DIAL2PINB), checkPosition, CHANGE);
 }
 
 // written by Faye! Updates the display with variables passed from main.ino. Called in a loop in main.ino.
-void setScreen(double XTAR, double YTAR, double XACT, double YACT, const char* statusText){
+void setScreen(int XTAR, int YTAR, double XACT, double YACT, const char* statusText){
     lcd.setCursor(0, 0);
     lcd.print("TARGET");
 
@@ -65,24 +49,38 @@ void setScreen(double XTAR, double YTAR, double XACT, double YACT, const char* s
     lcd.setCursor(0, 1);
     lcd.print("X:");
     lcd.print(XTAR);
+    if (XTAR < 10) lcd.print(" "); 
 
     lcd.setCursor(8, 1);
     lcd.print("X:");
+    if (XACT < 10) lcd.print("  ");
+    else if (XACT < 100) lcd.print(" ");
     lcd.print(XACT);
+    lcd.setCursor(15, 1);
+    lcd.print(" ");
 
     lcd.setCursor(0, 2);
     lcd.print("Y:");
     lcd.print(YTAR);
+    if (YTAR < 10) lcd.print(" "); 
 
     lcd.setCursor(8, 2);
     lcd.print("Y:");
+    if (YACT < 10) lcd.print("  ");
+    else if (YACT < 100) lcd.print(" ");
     lcd.print(YACT);
+    lcd.setCursor(15, 2);
+    lcd.print(" ");
 
     lcd.setCursor(0, 3);
     lcd.print("STATUS: ");
     lcd.print(statusText);
     lcd.print("          ");
 
+}
+
+void clearLCD(){
+    lcd.clear();
 }
 
 // turns off the backlight if TIMEOUT time has been passed
@@ -96,12 +94,4 @@ void lcdTimeout(uint32_t lastUpdated){
         lcd.backlight();
         screenOn = true;
     }
-}
-
-int getXDial(){
-    return xEncoder->getPosition();
-}
-
-int getYDial(){
-    return yEncoder->getPosition();
 }
