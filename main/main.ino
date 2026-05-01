@@ -10,11 +10,36 @@
 #define GOPIN 23
 #define RESETPIN 31
 
+#define PULSE_PIN_X 11
+#define DIR_PIN_X 12
+#define ENA_PIN_X 13
+
+// todo
+#define PULSE_PIN_Y 38
+#define DIR_PIN_Y 39
+#define ENA_PIN_Y 40
+
+#define PULSE_WIDTH_US 3
+#define TOL 0.5  // degrees tolerance on the motor
+
+#define BRAKE_DELAY_MS 2000
+
 #define TESTING 1
+
+const int DIR_CW  = HIGH;
+const int DIR_CCW = LOW;
+
+const int MOTOR_ENABLE  = LOW;
+const int MOTOR_DISABLE = HIGH;
+
+// const shared by both motors
+const unsigned long STEP_PERIOD_MS = 2; // 1 step per second
+const unsigned long PAUSE_MS = 1000; // 1-second dwell
 
 // Task Handles
 TaskHandle_t errorTaskHandle;
-TaskHandle_t motorTaskHandle;
+TaskHandle_t motorTaskHandleX;
+TaskHandle_t motorTaskHandleY;
 TaskHandle_t stateMachineTaskHandle;
 TaskHandle_t buttonTaskHandle;
 TaskHandle_t dialTaskHandle;
@@ -33,8 +58,8 @@ volatile double roundedY = 0;
 
 uint32_t lcdTimeoutTimer = 0; // only ever set to 0; data sharing not a concern
 
-volatile bool motorsStopped = true; // assume breaks at startup?
-volatile bool motorTargetReached = false; // assume breaks at startup?
+volatile bool XmotorTargetReached = false;
+volatile bool YmotorTargetReached = false;
 volatile double motorX = 0;
 volatile double motorY = 0;
 
@@ -42,6 +67,8 @@ volatile double motorY = 0;
 volatile bool goPressed = false;
 volatile bool stopPressed = false;
 volatile bool resetPressed = false;
+
+volatile bool stopSteps = false;
 // wake button
 
 // Inclinometer
@@ -51,6 +78,7 @@ SCL3300 inclinometer;
 // System state enum to track states/status/what its doing. 
 enum SystemState {
     STATE_OK,       // idle
+    STATE_RELEASE_BREAK,
     STATE_MOVING,   // motors moving to target
     STATE_DONE,     // target reached
     STATE_STOP,     // user-stop
@@ -62,6 +90,7 @@ volatile SystemState systemStatus = STATE_OK;
 const char* stateToString(SystemState s) { // for passing to hmi.ino
     switch(s) {
         case STATE_OK:      return "OK";
+        case STATE_RELEASE_BREAK: return "LIFT BRAKE";
         case STATE_MOVING:  return "MOVING";
         case STATE_DONE:    return "DONE";
         case STATE_STOP:    return "STOPPING";
@@ -106,51 +135,117 @@ void ErrorTask(void *pvParameters) {
     }
 }
 
-// Motor Control
-void MotorTask(void *pvParameters) {
-    const double TOL = 0.5;  // degrees tolerance
+// helpers for motor tasks
+void stepPulseX() {
+    digitalWrite(PULSE_PIN_X, HIGH);
+    delayMicroseconds(PULSE_WIDTH_US);
+    digitalWrite(PULSE_PIN_X, LOW);
+}
+void stepPulseY() {
+    digitalWrite(PULSE_PIN_Y, HIGH);
+    delayMicroseconds(PULSE_WIDTH_US);
+    digitalWrite(PULSE_PIN_Y, LOW);
+}
+
+// Motor Control X
+void MotorTaskX(void *pvParameters) {
     for (;;) {
         switch (systemStatus) {
+            case STATE_RELEASE_BREAK:
+                break;
             case STATE_MOVING:
-                // Motors are actively moving
-                motorsStopped = false;
+                if (TESTING) Serial.println("Motor sees STATE_MOVING\n");
 
+                if(!XmotorTargetReached){
+                    // typecast to ints for inclinometer sensitivity
+                    if( (inclinometerX - targetX) > 0){
+                        digitalWrite(DIR_PIN_X, DIR_CW);
+                        stepPulseX();
+                        vTaskDelay(pdMS_TO_TICKS(STEP_PERIOD_MS));
+                    }
+                    else if( (inclinometerX - targetX) < 0){
+                        digitalWrite(DIR_PIN_X, DIR_CCW);
+                        stepPulseX();
+                        vTaskDelay(pdMS_TO_TICKS(STEP_PERIOD_MS));
+                    }
+                }
                 // TODO: motor control code here
                 // moveMotorToward(targetX, targetY);
 
                 // Check if target reached
-                if (fabs(inclinometerX - targetX) < TOL &&
-                    fabs(inclinometerY - targetY) < TOL) {
-                    motorTargetReached = true;
-                    motorsStopped = true;
-                }
-                if(TESTING){
-                    // simulate movement for LCD test
-                    vTaskDelay(pdMS_TO_TICKS(2000));
-                    motorsStopped = true;
-                    motorTargetReached = true;
-                    break;
+                if (fabs(inclinometerX - targetX) < TOL ){
+                    XmotorTargetReached = true;
                 }
                 break;
+                
 
             case STATE_STOP:
-                // hault motor movement
-                if(TESTING){
-                    // simulate movement for LCD test
-                    vTaskDelay(pdMS_TO_TICKS(2000));
-                    motorsStopped = true;
-                    motorTargetReached = true;
-                    break;
-                }
+                if (TESTING) Serial.println("Motor sees STATE_STOP\n");
+                // todo
+                // lock motor movement and add a check in state machine
             case STATE_OK:
+                if (TESTING) Serial.println("Motor sees STATE_OK\n");
+                break;
             case STATE_DONE:
+                if (TESTING) Serial.println("Motor sees STATE_DONE\n");
                 // Motors should not move
-                motorsStopped = true;
                 break;
             default:
+                if (TESTING) Serial.println("Motor sees DEFAULT\n");
                 break;
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+}
+
+// Motor Control Y
+void MotorTaskY(void *pvParameters) {
+    for (;;) {
+        switch (systemStatus) {
+            case STATE_RELEASE_BREAK:
+                break;
+            case STATE_MOVING:
+                if (TESTING) Serial.println("Motor sees STATE_MOVING\n");
+
+                if(!YmotorTargetReached){
+                    // typecast to ints for inclinometer sensitivity
+                    if( (inclinometerY - targetY) > 0){
+                        digitalWrite(DIR_PIN_Y, DIR_CW);
+                        stepPulseY();
+                        vTaskDelay(pdMS_TO_TICKS(STEP_PERIOD_MS));
+                    }
+                    else if( (inclinometerY - targetY) < 0){
+                        digitalWrite(DIR_PIN_Y, DIR_CCW);
+                        stepPulseY();
+                        vTaskDelay(pdMS_TO_TICKS(STEP_PERIOD_MS));
+                    }
+                }
+                // TODO: motor control code here
+                // moveMotorToward(targetX, targetY);
+
+                // Check if target reached
+                if (fabs(inclinometerY - targetY) < TOL ){
+                    YmotorTargetReached = true;
+                }
+                break;
+                
+
+            case STATE_STOP:
+                if (TESTING) Serial.println("Motor sees STATE_STOP\n");
+                //todo
+                // lock motor movement and add a check in state machine
+            case STATE_OK:
+                if (TESTING) Serial.println("Motor sees STATE_OK\n");
+                break;
+            case STATE_DONE:
+                if (TESTING) Serial.println("Motor sees STATE_DONE\n");
+                // Motors should not move
+                break;
+            default:
+                if (TESTING) Serial.println("Motor sees DEFAULT\n");
+                break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
@@ -174,42 +269,62 @@ void StateMachineTask(void *pvParameters) {
             goPressed = false;
 
             // Prepare for motion
-            motorTargetReached = false;
-            motorsStopped = false;
+            XmotorTargetReached = false;
+            YmotorTargetReached = false;
 
-            systemStatus = STATE_MOVING;
+            systemStatus = STATE_RELEASE_BREAK;
         }
 
         switch (systemStatus) {
 
             case STATE_OK:
+                if (TESTING) Serial.println("STATE_OK\n");
                 // Idle
                 break;
 
+            case STATE_RELEASE_BREAK:
+                static TickType_t startTick = 0;
+
+                // First entry into this state
+                if (startTick == 0) {
+                    startTick = xTaskGetTickCount();
+                }
+
+                // Wait until brake delay expires (non-blocking)
+                if ((xTaskGetTickCount() - startTick) >= pdMS_TO_TICKS(BRAKE_DELAY_MS)) {
+                    startTick = 0;                 // reset for next time
+                    systemStatus = STATE_MOVING;   // advance state
+                }
+                break;
+
             case STATE_MOVING:
-                if (motorTargetReached) {
+                if (TESTING) Serial.println("STATE_MOVING\n");
+                if (XmotorTargetReached && YmotorTargetReached) {
                     systemStatus = STATE_DONE;
                 }
                 break;
 
             case STATE_DONE:
+                if (TESTING) Serial.println("STATE_DONE\n");
+                systemStatus = STATE_RESET;
                 // Stay DONE until user action
                 break;
 
             case STATE_STOP:
-                if(motorsStopped){
-                    systemStatus = STATE_OK;
-                }
+                if (TESTING) Serial.println("STATE_STOP\n");
+                systemStatus = STATE_OK;
                 break;
 
             case STATE_RESET:
+                if (TESTING) Serial.println("STATE_RESET\n");
                 // Reset system variables here
-                motorTargetReached = false;
-                motorsStopped = true;
+                XmotorTargetReached = false;
+                YmotorTargetReached = false;
                 systemStatus = STATE_OK;
                 break;
 
             case STATE_ERROR:
+                if (TESTING) Serial.println("STATE_ERROR\n");
                 // Wait for reset
                 break;
         }
@@ -254,13 +369,14 @@ void ButtonTask(void *pvParameters) {
 }
 
 // Dial setup variables
-#define DIAL1PINA 52
+#define DIAL1PINA 51
 #define DIAL1PINB 53
 #define DIAL2PINA 50
-#define DIAL2PINB 51
+#define DIAL2PINB 52
 
 RotaryEncoder *xEncoder = nullptr;
 RotaryEncoder *yEncoder = nullptr;
+
 // helper for DialTask on init
 void checkPosition(){
     xEncoder->tick(); // just call tick() to check the state.
@@ -304,6 +420,7 @@ void DisplayTask(void *pvParameters) {
 void InclinometerTask(void *pvParameters) {
     int oldX = 0;
     int oldY = 0;
+    
     for(;;){
         inclinometerX = inclinometer.getCalculatedAngleX();
         inclinometerY = inclinometer.getCalculatedAngleY();
@@ -327,6 +444,7 @@ void InclinometerTask(void *pvParameters) {
         }
         vTaskDelay(pdMS_TO_TICKS(100));
     }
+    
 }
 
 // -----------------------------------------------------
@@ -335,6 +453,27 @@ void InclinometerTask(void *pvParameters) {
 void setup() {
     Serial.begin(115200);
     lcdTimeoutTimer = millis();
+
+    // motor inits
+    pinMode(PULSE_PIN_X, OUTPUT);
+    pinMode(DIR_PIN_X, OUTPUT);
+    pinMode(ENA_PIN_X, OUTPUT);
+    pinMode(PULSE_PIN_Y, OUTPUT);
+    pinMode(DIR_PIN_Y, OUTPUT);
+    pinMode(ENA_PIN_Y, OUTPUT);
+    delay(100);
+    // Initialize idle state for motor
+    digitalWrite(ENA_PIN_X, MOTOR_DISABLE);
+    digitalWrite(PULSE_PIN_X, LOW);
+    digitalWrite(DIR_PIN_X, LOW);
+    digitalWrite(ENA_PIN_Y, MOTOR_DISABLE);
+    digitalWrite(PULSE_PIN_Y, LOW);
+    digitalWrite(DIR_PIN_Y, LOW);
+    delay(500);  // Let driver power up
+    // ---- Enable Motor ----
+    digitalWrite(ENA_PIN_X, MOTOR_ENABLE);
+    digitalWrite(ENA_PIN_Y, MOTOR_ENABLE);
+    delay(100);  // ENA setup time
 
     if (inclinometer.begin()) {
         Serial.println("SCL3300 sensor initialized successfully.\n");
@@ -349,12 +488,13 @@ void setup() {
 
     // Create tasks
     xTaskCreate(ErrorTask, "Errors", 256, NULL, 3, &errorTaskHandle);
-    xTaskCreate(MotorTask, "Motors", 256, NULL, 2, &motorTaskHandle);
+    xTaskCreate(MotorTaskX, "MotorsX", 256, NULL, 2, &motorTaskHandleX);
+    xTaskCreate(MotorTaskY, "MotorsY", 256, NULL, 2, &motorTaskHandleY);
     xTaskCreate(StateMachineTask, "State", 256, NULL, 2, &stateMachineTaskHandle);
     xTaskCreate(ButtonTask, "Buttons", 256, NULL, 1, &buttonTaskHandle);
     xTaskCreate(DialTask, "Dials", 256, NULL, 1, &dialTaskHandle);
     xTaskCreate(DisplayTask, "Display", 256, NULL, 1, &displayTaskHandle);
-    xTaskCreate(InclinometerTask, "Inclinometer", 256, NULL, 1, &displayTaskHandle);
+    xTaskCreate(InclinometerTask, "Inclinometer", 256, NULL, 1, &inclinometerTaskHandle);
 
     // Start scheduler
     vTaskStartScheduler();

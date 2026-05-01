@@ -32,5 +32,5 @@ void loop() {
   }
 
   // Wait 1000 milliseconds (1 second) before the next reading
-  delay(100);
+  delay(1000);
 }

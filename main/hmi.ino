@@ -87,7 +87,7 @@ void clearLCD(){
 void lcdTimeout(uint32_t lastUpdated){
     currTime = millis();
     if(currTime - lastUpdated >= TIMEOUT){
-        lcd.noBacklight();
+        //lcd.noBacklight();
         screenOn = false;
     }
     else{
